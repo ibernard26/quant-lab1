@@ -19,5 +19,25 @@ for daily_return in returns:
 average_return = total_return / len(returns)
 
 print("Average daily return:", average_return)
+deviations = []
 
+for daily_return in returns:
+    deviation = daily_return - average_return
+    deviations.append(deviation)
 
+print("Return deviations:", deviations)
+
+squared_deviations = []
+
+for deviation in deviations:
+    squared_deviation = deviation ** 2
+    squared_deviations.append(squared_deviation)
+
+variance = sum(squared_deviations) / len(squared_deviations)
+
+print("Squared deviations:", squared_deviations)
+print("Variance:", variance)
+volatility = variance ** 0.5
+
+print("Daily volatility:", volatility)
+print(f"Daily volatility (%): {volatility:.2%}")
