@@ -17,6 +17,14 @@ from main import (
     calculate_variance,
     calculate_volatility,
     calculate_annualized_volatility,
+    calculate_deviations,
+    calculate_squared_deviations,
+    calculate_sample_variance,
+    calculate_sample_standard_deviation,
+    convert_annual_rate_to_daily,
+    calculate_excess_returns,
+    calculate_sharpe_ratio,
+    calculate_annualized_sharpe_ratio,
 )
 
 # How close two floating-point numbers must be to count as equal.
@@ -168,6 +176,179 @@ class TestPrimaryExampleEndToEnd(unittest.TestCase):
         # computed once with an independent calculation and pinned here.
         result = calculate_annualized_volatility(calculate_returns(PRIMARY_PRICES))
         self.assertAlmostEqual(result, 0.5430242481883993, delta=1e-9)
+
+
+class TestDeviationHelpers(unittest.TestCase):
+    def test_known_deviations(self):
+        # Values [2, 4, 6]: mean = 4, so deviations are -2, 0, 2.
+        result = calculate_deviations([2, 4, 6])
+        for got, want in zip(result, [-2.0, 0.0, 2.0]):
+            self.assertAlmostEqual(got, want, delta=TOLERANCE)
+
+    def test_known_squared_deviations(self):
+        # Squares of -2, 0, 2 are 4, 0, 4.
+        result = calculate_squared_deviations([2, 4, 6])
+        for got, want in zip(result, [4.0, 0.0, 4.0]):
+            self.assertAlmostEqual(got, want, delta=TOLERANCE)
+
+    def test_deviations_sum_to_zero(self):
+        # By definition the deviations from the mean always sum to zero.
+        result = calculate_deviations([1.0, 2.5, 3.0, 9.5])
+        self.assertAlmostEqual(sum(result), 0.0, delta=TOLERANCE)
+
+
+class TestCalculateSampleVariance(unittest.TestCase):
+    def test_known_sample_variance(self):
+        # Values [2, 4, 6]: mean = 4, squared deviations 4, 0, 4 -> sum 8.
+        # Sample variance divides by n - 1 (= 2): 8 / 2 = 4.0.
+        self.assertAlmostEqual(calculate_sample_variance([2, 4, 6]), 4.0, delta=TOLERANCE)
+
+    def test_sample_differs_from_population_by_n_over_n_minus_1(self):
+        # For the same data, sample variance = population variance * n / (n - 1).
+        values = PRIMARY_RETURNS
+        n = len(values)
+        population = calculate_variance(values)
+        expected_sample = population * n / (n - 1)
+        self.assertAlmostEqual(
+            calculate_sample_variance(values), expected_sample, delta=TOLERANCE
+        )
+
+    def test_explicit_n_vs_n_minus_1_distinction(self):
+        # Values [0, 2]: mean = 1, squared deviations 1 and 1, sum = 2.
+        # Population (divide by n = 2) -> 1.0
+        # Sample (divide by n - 1 = 1) -> 2.0
+        self.assertAlmostEqual(calculate_variance([0, 2]), 1.0, delta=TOLERANCE)
+        self.assertAlmostEqual(calculate_sample_variance([0, 2]), 2.0, delta=TOLERANCE)
+
+    def test_one_observation_raises(self):
+        # Sample variance is undefined for a single observation (n - 1 = 0).
+        with self.assertRaises(ValueError):
+            calculate_sample_variance([5.0])
+
+    def test_empty_list_raises(self):
+        with self.assertRaises(ValueError):
+            calculate_sample_variance([])
+
+
+class TestCalculateSampleStandardDeviation(unittest.TestCase):
+    def test_sample_std_is_sqrt_of_sample_variance(self):
+        # Sample variance of [2, 4, 6] is 4.0, so sample std is 2.0.
+        self.assertAlmostEqual(
+            calculate_sample_standard_deviation([2, 4, 6]), 2.0, delta=TOLERANCE
+        )
+
+    def test_one_observation_raises(self):
+        with self.assertRaises(ValueError):
+            calculate_sample_standard_deviation([5.0])
+
+
+class TestConvertAnnualRateToDaily(unittest.TestCase):
+    def test_zero_rate_maps_to_zero(self):
+        self.assertAlmostEqual(convert_annual_rate_to_daily(0.0), 0.0, delta=TOLERANCE)
+
+    def test_compounds_back_to_annual_rate(self):
+        # The defining property: compounding the daily rate over 252 trading
+        # days must reproduce the annual rate. This checks the conversion
+        # against its own definition, independently of the implementation.
+        annual = 0.02
+        daily = convert_annual_rate_to_daily(annual)
+        self.assertAlmostEqual((1 + daily) ** 252 - 1, annual, delta=1e-12)
+
+    def test_custom_periods_per_year(self):
+        # With 12 periods, compounding 12 times must reproduce the annual rate.
+        annual = 0.06
+        daily = convert_annual_rate_to_daily(annual, periods_per_year=12)
+        self.assertAlmostEqual((1 + daily) ** 12 - 1, annual, delta=1e-12)
+
+
+class TestCalculateExcessReturns(unittest.TestCase):
+    def test_known_excess_returns(self):
+        # Subtracting a constant daily risk-free rate of 0.005 from each return.
+        result = calculate_excess_returns([0.01, 0.02, 0.03], 0.005)
+        for got, want in zip(result, [0.005, 0.015, 0.025]):
+            self.assertAlmostEqual(got, want, delta=TOLERANCE)
+
+    def test_zero_rate_leaves_returns_unchanged(self):
+        result = calculate_excess_returns([0.01, -0.02], 0.0)
+        for got, want in zip(result, [0.01, -0.02]):
+            self.assertAlmostEqual(got, want, delta=TOLERANCE)
+
+
+class TestSharpeRatio(unittest.TestCase):
+    def test_known_positive_sharpe(self):
+        # returns [0.01, 0.02, 0.03] with a 0% risk-free rate.
+        # Excess returns equal the returns; mean = 0.02.
+        # Sample variance = ((0.01)^2 + 0 + (0.01)^2) / (3 - 1) = 0.0001.
+        # Sample std = 0.01, so Sharpe = 0.02 / 0.01 = 2.0.
+        result = calculate_sharpe_ratio([0.01, 0.02, 0.03], 0.0)
+        self.assertAlmostEqual(result, 2.0, delta=1e-12)
+
+    def test_known_negative_sharpe(self):
+        # returns [-0.03, -0.01, -0.02] with a 0% risk-free rate.
+        # mean = -0.02, sample std = 0.01, so Sharpe = -2.0.
+        result = calculate_sharpe_ratio([-0.03, -0.01, -0.02], 0.0)
+        self.assertAlmostEqual(result, -2.0, delta=1e-12)
+
+    def test_higher_risk_free_rate_lowers_sharpe(self):
+        # A positive risk-free rate reduces excess returns (numerator) while
+        # leaving their spread unchanged, so the Sharpe ratio must fall.
+        base = calculate_sharpe_ratio([0.01, 0.02, 0.03], 0.0)
+        with_rf = calculate_sharpe_ratio([0.01, 0.02, 0.03], 0.02)
+        self.assertLess(with_rf, base)
+
+    def test_zero_volatility_raises(self):
+        # Constant returns give zero-spread excess returns; the Sharpe ratio
+        # is undefined and must raise rather than divide by zero.
+        with self.assertRaises(ValueError):
+            calculate_sharpe_ratio([0.01, 0.01, 0.01], 0.0)
+
+    def test_too_few_returns_raise(self):
+        # The sample standard deviation in the denominator needs >= 2 points.
+        with self.assertRaises(ValueError):
+            calculate_sharpe_ratio([0.01], 0.0)
+
+
+class TestAnnualizedSharpeRatio(unittest.TestCase):
+    def test_annualized_is_daily_times_sqrt_252(self):
+        returns = [0.01, 0.02, 0.03]
+        daily = calculate_sharpe_ratio(returns, 0.0)  # = 2.0
+        expected = daily * math.sqrt(252)
+        self.assertAlmostEqual(
+            calculate_annualized_sharpe_ratio(returns, 0.0), expected, delta=1e-9
+        )
+
+    def test_negative_annualized_sharpe(self):
+        # A negative daily Sharpe stays negative after annualization.
+        result = calculate_annualized_sharpe_ratio([-0.03, -0.01, -0.02], 0.0)
+        self.assertLess(result, 0.0)
+        self.assertAlmostEqual(result, -2.0 * math.sqrt(252), delta=1e-9)
+
+
+class TestSharpePrimaryExample(unittest.TestCase):
+    """Cross-check the Sharpe pipeline on the primary prices with an
+    independent, self-contained calculation (no functions under test)."""
+
+    def test_primary_sharpe_matches_independent_value(self):
+        returns = calculate_returns(PRIMARY_PRICES)
+        annual_rf = 0.02
+
+        # Independent recomputation.
+        daily_rf = (1 + annual_rf) ** (1 / 252) - 1
+        excess = [r - daily_rf for r in returns]
+        n = len(excess)
+        mean_excess = sum(excess) / n
+        sample_var = sum((e - mean_excess) ** 2 for e in excess) / (n - 1)
+        sample_std = math.sqrt(sample_var)
+        expected_sharpe = mean_excess / sample_std
+
+        self.assertAlmostEqual(
+            calculate_sharpe_ratio(returns, annual_rf), expected_sharpe, delta=1e-12
+        )
+        self.assertAlmostEqual(
+            calculate_annualized_sharpe_ratio(returns, annual_rf),
+            expected_sharpe * math.sqrt(252),
+            delta=1e-9,
+        )
 
 
 if __name__ == "__main__":
