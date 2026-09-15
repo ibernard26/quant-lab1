@@ -53,21 +53,20 @@ def calculate_annualized_volatility(values):
 def main():
     prices = [100.00, 105.00, 102.00, 108.00, 110.00]
 
+    # Build the pipeline one step at a time. Each value depends on the
+    # previous one, so returns must exist before anything else is computed.
     returns = calculate_returns(prices)
     average_return = calculate_mean(returns)
     variance = calculate_variance(returns)
     volatility = calculate_volatility(returns)
     annualized_volatility = calculate_annualized_volatility(returns)
 
+    print("Prices:", prices)
     print("Daily returns:", returns)
     print(f"Average daily return: {average_return:.4%}")
     print("Population variance:", variance)
-    print(f"Daily volatility (%): {volatility:.2%}")
-
-    other_prices = [200, 210, 189]
-    other_returns = calculate_returns(other_prices)
-
-    print("Other daily returns:", other_returns)
+    print(f"Daily volatility: {volatility:.4%}")
+    print(f"Annualized volatility: {annualized_volatility:.4%}")
 
 
 if __name__ == "__main__":
