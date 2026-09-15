@@ -43,9 +43,18 @@ def calculate_variance(values):
 
 def calculate_volatility(values):
     return calculate_variance(values) ** 0.5
+def calculate_volatility(values):
+    return calculate_variance(values) ** 0.5
+
+
+def calculate_annualized_volatility(values):
+    daily_volatility = calculate_volatility(values)
+    return daily_volatility * (252 ** 0.5)
 
 
 def main():
+
+def mainannualized_volatility = calculate_annualized_volatility(returns)):
     prices = [100.00, 105.00, 102.00, 108.00, 110.00]
 
     returns = calculate_returns(prices)
