@@ -25,6 +25,7 @@ from main import (
     calculate_excess_returns,
     calculate_sharpe_ratio,
     calculate_annualized_sharpe_ratio,
+    TRADING_DAYS_PER_YEAR,
 )
 
 # How close two floating-point numbers must be to count as equal.
@@ -260,6 +261,32 @@ class TestConvertAnnualRateToDaily(unittest.TestCase):
         daily = convert_annual_rate_to_daily(annual, periods_per_year=12)
         self.assertAlmostEqual((1 + daily) ** 12 - 1, annual, delta=1e-12)
 
+    def test_default_periods_is_trading_days_per_year(self):
+        # The default must be the shared 252 constant so the risk-free
+        # conversion stays on the same frequency as Sharpe annualization.
+        annual = 0.02
+        explicit = convert_annual_rate_to_daily(annual, TRADING_DAYS_PER_YEAR)
+        default = convert_annual_rate_to_daily(annual)
+        self.assertAlmostEqual(default, explicit, delta=TOLERANCE)
+
+    def test_zero_periods_per_year_raises(self):
+        with self.assertRaises(ValueError):
+            convert_annual_rate_to_daily(0.02, periods_per_year=0)
+
+    def test_negative_periods_per_year_raises(self):
+        with self.assertRaises(ValueError):
+            convert_annual_rate_to_daily(0.02, periods_per_year=-12)
+
+    def test_annual_rate_below_minus_one_raises(self):
+        # (1 + annual_rate) would be negative, and a fractional power of a
+        # negative number is not a real value, so this must be rejected.
+        with self.assertRaises(ValueError):
+            convert_annual_rate_to_daily(-1.5)
+
+    def test_annual_rate_of_minus_one_is_allowed(self):
+        # Exactly -1 keeps the base at zero, which is still a real result.
+        self.assertAlmostEqual(convert_annual_rate_to_daily(-1.0), -1.0, delta=TOLERANCE)
+
 
 class TestCalculateExcessReturns(unittest.TestCase):
     def test_known_excess_returns(self):
@@ -322,6 +349,25 @@ class TestAnnualizedSharpeRatio(unittest.TestCase):
         result = calculate_annualized_sharpe_ratio([-0.03, -0.01, -0.02], 0.0)
         self.assertLess(result, 0.0)
         self.assertAlmostEqual(result, -2.0 * math.sqrt(252), delta=1e-9)
+
+    def test_uses_252_trading_days(self):
+        # Guard against the old frequency bug: annualization must scale by
+        # sqrt(252) exactly, matching the risk-free-rate conversion.
+        self.assertEqual(TRADING_DAYS_PER_YEAR, 252)
+        returns = [0.01, 0.02, 0.03]
+        daily = calculate_sharpe_ratio(returns, 0.0)
+        annualized = calculate_annualized_sharpe_ratio(returns, 0.0)
+        self.assertAlmostEqual(
+            annualized / daily, math.sqrt(TRADING_DAYS_PER_YEAR), delta=1e-12
+        )
+
+    def test_does_not_accept_arbitrary_periods_per_year(self):
+        # The implementation is explicitly daily. Passing a periods_per_year
+        # argument (the source of the old inconsistency) must be rejected so a
+        # caller cannot annualize with a frequency the risk-free conversion
+        # does not share.
+        with self.assertRaises(TypeError):
+            calculate_annualized_sharpe_ratio([0.01, 0.02, 0.03], 0.0, periods_per_year=12)
 
 
 class TestSharpePrimaryExample(unittest.TestCase):
