@@ -1,3 +1,10 @@
+# Number of U.S. trading days in a year. This whole module treats returns as
+# DAILY observations, so the same constant is used everywhere a daily quantity
+# is scaled up to a yearly one (volatility annualization, the annual-to-daily
+# risk-free-rate conversion, and Sharpe annualization).
+TRADING_DAYS_PER_YEAR = 252
+
+
 def calculate_returns(prices):
     if len(prices) < 2:
         raise ValueError("At least two prices are required.")
@@ -65,7 +72,7 @@ def calculate_volatility(values):
 
 def calculate_annualized_volatility(values):
     daily_volatility = calculate_volatility(values)
-    return daily_volatility * (252 ** 0.5)
+    return daily_volatility * (TRADING_DAYS_PER_YEAR ** 0.5)
 
 
 def calculate_sample_variance(values):
@@ -91,13 +98,22 @@ def calculate_sample_standard_deviation(values):
     return calculate_sample_variance(values) ** 0.5
 
 
-def convert_annual_rate_to_daily(annual_rate, periods_per_year=252):
+def convert_annual_rate_to_daily(annual_rate, periods_per_year=TRADING_DAYS_PER_YEAR):
     # Convert an annual (decimal) rate into an equivalent per-period rate,
     # assuming it compounds over `periods_per_year` trading days:
     #   (1 + daily_rate) ** periods_per_year = 1 + annual_rate
     #   => daily_rate = (1 + annual_rate) ** (1 / periods_per_year) - 1
     # This compounding conversion is used instead of the rough approximation
     # annual_rate / periods_per_year so the frequencies stay consistent.
+    if periods_per_year <= 0:
+        raise ValueError("periods_per_year must be a positive number.")
+
+    # A fractional power of a negative base is not a real number, so the base
+    # (1 + annual_rate) must not be negative. That means annual_rate cannot be
+    # below -1 (a loss worse than -100%).
+    if annual_rate < -1:
+        raise ValueError("annual_rate must be greater than or equal to -1.")
+
     return (1 + annual_rate) ** (1 / periods_per_year) - 1
 
 
@@ -143,13 +159,18 @@ def calculate_sharpe_ratio(returns, annual_risk_free_rate):
     return average_excess_return / excess_standard_deviation
 
 
-def calculate_annualized_sharpe_ratio(returns, annual_risk_free_rate, periods_per_year=252):
-    # Annualize a daily Sharpe ratio by scaling with sqrt(periods_per_year).
+def calculate_annualized_sharpe_ratio(returns, annual_risk_free_rate):
+    # Annualize the DAILY Sharpe ratio by scaling with sqrt(252).
     # This is the standard approximation: the mean excess return scales with
     # the number of periods while the standard deviation scales with its
-    # square root, so their ratio scales with sqrt(periods_per_year).
+    # square root, so their ratio scales with the square root of the number
+    # of periods. This implementation is explicitly daily, so it uses the
+    # same 252-day convention that calculate_sharpe_ratio uses when it
+    # converts the annual risk-free rate to a daily rate. Keeping both on 252
+    # trading days is what makes the numerator and denominator frequencies
+    # consistent.
     daily_sharpe_ratio = calculate_sharpe_ratio(returns, annual_risk_free_rate)
-    return daily_sharpe_ratio * (periods_per_year ** 0.5)
+    return daily_sharpe_ratio * (TRADING_DAYS_PER_YEAR ** 0.5)
 
 
 def main():

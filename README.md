@@ -61,6 +61,14 @@ obvious in the code.
 
 ## Sharpe-ratio assumptions
 
+This is a **daily-return implementation** that uses approximately **252 U.S.
+trading days per year** throughout. It does **not** support arbitrary
+observation frequencies: the same 252-day convention is used for the
+annual-to-daily risk-free-rate conversion and for annualizing the Sharpe ratio,
+so the numerator and denominator always stay on a consistent daily frequency.
+The shared `TRADING_DAYS_PER_YEAR = 252` constant is used for volatility
+annualization, the risk-free conversion, and Sharpe annualization.
+
 The Sharpe ratio implementation is intentionally explicit about frequency and
 units:
 
